@@ -39,6 +39,8 @@ function Index() {
   const [quest, setQuest] = useState(0);
   const [bossHp, setBossHp] = useState(BIOMES[0].bossHp);
   const [message, setMessage] = useState("Explora o mapa e fala com os NPCs.");
+  const [fullscreen, setFullscreen] = useState(false);
+  const gameShellRef = useRef<HTMLElement>(null);
   const current = BIOMES[biome];
   const xpNeed = 100 + (level - 1) * 60;
 
@@ -198,23 +200,30 @@ function Index() {
 
   const locked = (i:number) => level < BIOMES[i].level;
 
+  const toggleFullscreen = async () => {
+    if (!document.fullscreenElement) { await gameShellRef.current?.requestFullscreen?.(); setFullscreen(true); }
+    else { await document.exitFullscreen?.(); setFullscreen(false); }
+  };
+
+  useEffect(() => { const onFs = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", onFs); return () => document.removeEventListener("fullscreenchange", onFs); }, []);
+
   const press = (key:string) => {
     keys.current.add(key);
     window.setTimeout(() => keys.current.delete(key), 150);
   };
 
   return (
-    <main className="min-h-screen bg-[#111018] p-3 text-white md:p-6" style={{ fontFamily: "monospace" }}>
-      <div className="mx-auto max-w-6xl">
+    <main ref={gameShellRef} className={`min-h-screen bg-[#111018] p-2 text-white md:p-4 ${fullscreen ? "overflow-auto" : ""}`} style={{ fontFamily: "monospace" }}>
+      <div className="mx-auto max-w-[1500px]">
         <header className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b-4 border-[#302b3b] pb-3">
           <div><h1 className="text-2xl font-black tracking-tight md:text-3xl">ADVENTURE FORGE</h1><p className="text-xs text-[#a9a2b5]">2D PIXEL RPG • MISSÕES • ARMAS • BOSSES</p></div>
-          <div className="flex gap-2 text-xs font-bold"><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">LV {level}</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">HP {hp}/100</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">G {gold}</span></div>
+          <div className="flex flex-wrap gap-2 text-xs font-bold"><button onClick={toggleFullscreen} className="pixel-btn px-3">{fullscreen ? "SAIR DA TELA CHEIA" : "⛶ TELA CHEIA"}</button><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">LV {level}</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">HP {hp}/100</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">G {gold}</span></div>
         </header>
 
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_310px]">
+        <div className="grid min-h-[calc(100vh-100px)] gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className="border-4 border-[#40394d] bg-[#18151f] p-2 shadow-[8px_8px_0_#09080d]">
             <div className="overflow-auto bg-black">
-              <canvas ref={canvasRef} className="mx-auto block h-auto max-w-full" style={{ imageRendering: "pixelated" }} />
+              <canvas ref={canvasRef} className="mx-auto block h-auto max-w-full lg:w-full" style={{ imageRendering: "pixelated" }} />
             </div>
             <div className="mt-2 grid grid-cols-3 gap-2">
               <button onClick={()=>press("arrowleft")} className="pixel-btn">◀</button>
