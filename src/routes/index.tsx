@@ -7,6 +7,7 @@ type Biome = {
   name: string;
   tile: string;
   accent: string;
+  dark: string;
   enemy: string;
   boss: string;
   bossHp: number;
@@ -15,20 +16,20 @@ type Biome = {
 };
 
 const BIOMES: Biome[] = [
-  { name: "Vale Verde", tile: "#2f6b3f", accent: "#8fcf63", enemy: "Slime", boss: "Rei Slime", bossHp: 180, level: 1, reward: 180 },
-  { name: "Deserto Rubro", tile: "#a15d35", accent: "#e2a14a", enemy: "Escorpião", boss: "Colosso Rubro", bossHp: 300, level: 4, reward: 320 },
-  { name: "Picos Gelados", tile: "#477d91", accent: "#bde8f2", enemy: "Lobo de Gelo", boss: "Yeti Ancestral", bossHp: 450, level: 8, reward: 520 },
-  { name: "Cratera Sombria", tile: "#4d304b", accent: "#d66b6b", enemy: "Demónio", boss: "Senhor da Cratera", bossHp: 720, level: 13, reward: 900 },
+  { name: "Vale Verde", tile: "#315f3a", accent: "#78b957", dark: "#1b3927", enemy: "Slime", boss: "Rei Slime", bossHp: 180, level: 1, reward: 180 },
+  { name: "Deserto Rubro", tile: "#9a5b37", accent: "#d89b4b", dark: "#613927", enemy: "Escorpião", boss: "Colosso Rubro", bossHp: 300, level: 4, reward: 320 },
+  { name: "Picos Gelados", tile: "#47788a", accent: "#b9e4ee", dark: "#294a59", enemy: "Lobo de Gelo", boss: "Yeti Ancestral", bossHp: 450, level: 8, reward: 520 },
+  { name: "Cratera Sombria", tile: "#4b304c", accent: "#c96570", dark: "#2b1c31", enemy: "Demónio", boss: "Senhor da Cratera", bossHp: 720, level: 13, reward: 900 },
 ];
 
-const W = 20;
-const H = 11;
+const W = 30;
+const H = 17;
 const TILE = 32;
 
 function Index() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keys = useRef(new Set<string>());
-  const player = useRef({ x: 10, y: 6 });
+  const player = useRef({ x: 15, y: 9 });
   const [biome, setBiome] = useState(0);
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
@@ -38,7 +39,7 @@ function Index() {
   const [kills, setKills] = useState(0);
   const [quest, setQuest] = useState(0);
   const [bossHp, setBossHp] = useState(BIOMES[0].bossHp);
-  const [message, setMessage] = useState("Explora o mapa e fala com os NPCs.");
+  const [message, setMessage] = useState("Explora o reino e fala com os NPCs.");
   const [fullscreen, setFullscreen] = useState(false);
   const gameShellRef = useRef<HTMLElement>(null);
   const current = BIOMES[biome];
@@ -47,7 +48,7 @@ function Index() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       keys.current.add(e.key.toLowerCase());
-      if (["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"," "].includes(e.key.toLowerCase())) e.preventDefault();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " "].includes(e.key.toLowerCase())) e.preventDefault();
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown", down);
@@ -56,11 +57,11 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    player.current = { x: 10, y: 6 };
+    player.current = { x: 15, y: 9 };
     setBossHp(current.bossHp);
     setQuest(0);
-    setMessage("Novo mapa descoberto. Explora com WASD ou as setas.");
-  }, [biome]);
+    setMessage("Novo território descoberto. Explora com WASD ou as setas.");
+  }, [biome, current.bossHp]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -71,11 +72,61 @@ function Index() {
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
 
+    const drawTree = (x: number, y: number) => {
+      const px = x * TILE, py = y * TILE;
+      ctx.fillStyle = "#30231c"; ctx.fillRect(px + 13, py + 18, 7, 11);
+      ctx.fillStyle = current.dark; ctx.fillRect(px + 7, py + 10, 19, 15);
+      ctx.fillStyle = current.accent; ctx.fillRect(px + 11, py + 5, 13, 13);
+      ctx.fillStyle = "#b7dc72"; ctx.fillRect(px + 14, py + 3, 7, 7);
+      ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.fillRect(px + 6, py + 25, 22, 3);
+    };
+
+    const drawRock = (x: number, y: number) => {
+      const px = x * TILE, py = y * TILE;
+      ctx.fillStyle = "#2b2630"; ctx.fillRect(px + 6, py + 15, 21, 11);
+      ctx.fillStyle = current.accent; ctx.fillRect(px + 9, py + 9, 17, 13);
+      ctx.fillStyle = "#d7d0c4"; ctx.fillRect(px + 12, py + 10, 7, 4);
+    };
+
+    const drawNpc = (x: number, y: number, shirt: string, name: string, icon: string) => {
+      const px = x * TILE, py = y * TILE;
+      ctx.fillStyle = "#121019"; ctx.fillRect(px + 8, py + 9, 16, 20);
+      ctx.fillStyle = "#e8b38d"; ctx.fillRect(px + 10, py + 5, 12, 12);
+      ctx.fillStyle = "#33251e"; ctx.fillRect(px + 9, py + 3, 14, 7);
+      ctx.fillStyle = shirt; ctx.fillRect(px + 8, py + 16, 16, 10);
+      ctx.fillStyle = "#17131b"; ctx.fillRect(px + 11, py + 10, 3, 3); ctx.fillRect(px + 18, py + 10, 3, 3);
+      ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+      ctx.fillStyle = "#fff"; ctx.fillText(icon + " " + name, px + 16, py - 3);
+      ctx.textAlign = "left";
+    };
+
+    const drawEnemy = (x: number, y: number) => {
+      const px = x * TILE, py = y * TILE;
+      ctx.fillStyle = "#17131b";
+      ctx.fillRect(px + 5, py + 14, 23, 12);
+      ctx.fillStyle = biome === 0 ? "#6dd17b" : biome === 1 ? "#d07b39" : biome === 2 ? "#9fe0ef" : "#b84c6a";
+      ctx.fillRect(px + 8, py + 9, 18, 15);
+      ctx.fillStyle = "#fff"; ctx.fillRect(px + 11, py + 12, 4, 4); ctx.fillRect(px + 19, py + 12, 4, 4);
+      ctx.fillStyle = "#221827"; ctx.fillRect(px + 12, py + 13, 2, 2); ctx.fillRect(px + 20, py + 13, 2, 2);
+    };
+
+    const drawBoss = (x: number, y: number) => {
+      const px = x * TILE, py = y * TILE;
+      ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(px + 3, py + 29, 42, 4);
+      ctx.fillStyle = "#19131e"; ctx.fillRect(px + 9, py + 12, 30, 30);
+      ctx.fillStyle = current.accent; ctx.fillRect(px + 6, py + 6, 36, 28);
+      ctx.fillStyle = current.dark; ctx.fillRect(px + 12, py + 13, 24, 19);
+      ctx.fillStyle = "#f2d6a0"; ctx.fillRect(px + 15, py + 16, 5, 5); ctx.fillRect(px + 28, py + 16, 5, 5);
+      ctx.fillStyle = "#151018"; ctx.fillRect(px + 16, py + 17, 3, 3); ctx.fillRect(px + 29, py + 17, 3, 3);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+      ctx.fillText(current.boss, px + 24, py - 4); ctx.textAlign = "left";
+    };
+
     let raf = 0;
     let lastMove = 0;
     const draw = (time: number) => {
       const k = keys.current;
-      if (time - lastMove > 115) {
+      if (time - lastMove > 105) {
         let dx = 0, dy = 0;
         if (k.has("arrowleft") || k.has("a")) dx = -1;
         if (k.has("arrowright") || k.has("d")) dx = 1;
@@ -88,53 +139,49 @@ function Index() {
         }
       }
 
-      ctx.fillStyle = current.tile;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = current.tile; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const n = (x * 17 + y * 31 + biome * 13) % 7;
-        ctx.fillStyle = n < 3 ? current.accent : current.tile;
-        ctx.globalAlpha = n < 3 ? 0.12 : 0.08;
-        ctx.fillRect(x*TILE+2, y*TILE+2, TILE-4, TILE-4);
+        const n = (x * 17 + y * 31 + biome * 13) % 9;
+        ctx.globalAlpha = n < 3 ? 0.14 : 0.055;
+        ctx.fillStyle = current.accent;
+        ctx.fillRect(x * TILE + 2, y * TILE + 2, TILE - 4, TILE - 4);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "rgba(0,0,0,.08)";
+        ctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
       }
-      ctx.globalAlpha = 1;
 
-      const obstacle = (x:number,y:number,type:number) => {
-        ctx.fillStyle = type === 0 ? "#173b27" : "#3b3030";
-        ctx.fillRect(x*TILE+7,y*TILE+10,18,17);
-        ctx.fillStyle = type === 0 ? "#4f9a50" : "#776b61";
-        ctx.fillRect(x*TILE+4,y*TILE+6,24,13);
-        ctx.fillRect(x*TILE+10,y*TILE+2,12,10);
-      };
-      for (const [x,y,t] of [[2,2,0],[4,8,0],[16,2,0],[17,8,0],[7,2,1],[13,8,1]] as [number,number,number][]) obstacle(x,y,t);
+      // A readable old-school adventure path.
+      ctx.fillStyle = "rgba(36,24,22,.18)";
+      ctx.fillRect(0, 7 * TILE, canvas.width, 3 * TILE);
+      ctx.fillRect(12 * TILE, 0, 5 * TILE, canvas.height);
 
-      // old-school NPCs and enemy sprites
-      const npc = (x:number,y:number,shirt:string) => {
-        ctx.fillStyle = "#24202a"; ctx.fillRect(x*TILE+8,y*TILE+5,16,23);
-        ctx.fillStyle = "#e8b38d"; ctx.fillRect(x*TILE+10,y*TILE+4,12,10);
-        ctx.fillStyle = shirt; ctx.fillRect(x*TILE+8,y*TILE+14,16,11);
-        ctx.fillStyle = "#111"; ctx.fillRect(x*TILE+11,y*TILE+9,3,3); ctx.fillRect(x*TILE+18,y*TILE+9,3,3);
-      };
-      npc(3,4,"#4ecf8e"); npc(16,6,"#d9a441");
+      [[2,2],[5,12],[24,3],[27,13],[8,3],[22,11]].forEach(([x,y]) => drawTree(x,y));
+      [[10,2],[19,4],[3,14],[25,7],[14,13]].forEach(([x,y]) => drawRock(x,y));
 
-      ctx.fillStyle = "#16131c";
-      ctx.fillRect(14*TILE+5, 3*TILE+7, 22, 20);
-      ctx.fillStyle = "#bd3d58";
-      ctx.fillRect(14*TILE+2, 3*TILE+2, 28, 16);
-      ctx.fillStyle = "#ef7890";
-      ctx.fillRect(14*TILE+10, 3*TILE+6, 5, 5); ctx.fillRect(14*TILE+23, 3*TILE+6, 5, 5);
+      drawNpc(4, 6, "#42c98b", "ARIA", "!");
+      drawNpc(25, 6, "#d9a441", "BROM", "★");
+      drawNpc(4, 11, "#5c8de8", "LINA", "+");
+      drawEnemy(10, 8);
+      drawEnemy(20, 12);
+      drawBoss(24, 1);
 
-      const px = player.current.x*TILE, py = player.current.y*TILE;
-      ctx.fillStyle = "#15121a"; ctx.fillRect(px+5,py+4,22,25);
-      ctx.fillStyle = "#3f6de0"; ctx.fillRect(px+7,py+13,18,13);
-      ctx.fillStyle = "#e8b38d"; ctx.fillRect(px+9,py+6,14,12);
-      ctx.fillStyle = "#6b3e28"; ctx.fillRect(px+7,py+3,18,7);
-      ctx.fillStyle = "#fff"; ctx.fillRect(px+13,py+10,3,3); ctx.fillRect(px+19,py+10,3,3);
+      const px = player.current.x * TILE, py = player.current.y * TILE;
+      ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(px + 3, py + 27, 27, 4);
+      ctx.fillStyle = "#17131b"; ctx.fillRect(px + 6, py + 7, 20, 23);
+      ctx.fillStyle = "#3f6de0"; ctx.fillRect(px + 8, py + 16, 16, 11);
+      ctx.fillStyle = "#e8b38d"; ctx.fillRect(px + 9, py + 7, 14, 12);
+      ctx.fillStyle = "#6b3e28"; ctx.fillRect(px + 7, py + 4, 18, 7);
+      ctx.fillStyle = "#fff"; ctx.fillRect(px + 13, py + 11, 3, 3); ctx.fillRect(px + 19, py + 11, 3, 3);
+      ctx.fillStyle = "#d9d0b8"; ctx.fillRect(px + 24, py + 18, 8, 3);
 
-      ctx.fillStyle = "rgba(0,0,0,.45)";
-      ctx.fillRect(0,0,canvas.width,27);
-      ctx.fillStyle = "#fff"; ctx.font = "bold 13px monospace";
-      ctx.fillText(current.name + "  •  WASD / SETAS", 9, 18);
+      // Cinematic HUD strip.
+      ctx.fillStyle = "rgba(12,10,16,.78)"; ctx.fillRect(0, 0, canvas.width, 34);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 14px monospace";
+      ctx.fillText(current.name.toUpperCase(), 12, 21);
+      ctx.fillStyle = current.accent; ctx.fillText("◆", 145, 21);
+      ctx.fillStyle = "#bcb4c4"; ctx.fillText("WASD / SETAS  •  EXPLORA", 162, 21);
+
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
@@ -157,11 +204,11 @@ function Index() {
   };
 
   const hunt = () => {
-    if (hp <= 0) return setMessage("Estás derrotado. Compra uma cura com a Lina.");
+    if (hp <= 0) return setMessage("Estás derrotado. Cura-te primeiro.");
     setKills(k => k + 1);
     setQuest(q => Math.min(5, q + 1));
     setGold(g => g + 12 + current.level * 2);
-    setHp(h => Math.max(0, h - Math.max(2, current.level + Math.floor(Math.random()*7))));
+    setHp(h => Math.max(0, h - Math.max(2, current.level + Math.floor(Math.random() * 7))));
     gainXp(25 + current.level * 3);
     setMessage(current.enemy + " derrotado! +XP e ouro.");
   };
@@ -169,16 +216,16 @@ function Index() {
   const attackBoss = () => {
     if (hp <= 0) return setMessage("Estás derrotado. Cura-te primeiro.");
     if (bossHp <= 0) return setMessage("Este boss já foi derrotado.");
-    const hit = damage + Math.floor(Math.random()*9);
-    const retaliation = Math.max(3, current.level + Math.floor(Math.random()*10));
+    const hit = damage + Math.floor(Math.random() * 9);
+    const retaliation = Math.max(3, current.level + Math.floor(Math.random() * 10));
     const next = Math.max(0, bossHp - hit);
     setBossHp(next);
     setHp(h => Math.max(0, h - retaliation));
     if (next === 0) {
       setGold(g => g + current.reward);
       gainXp(90 + current.level * 15);
-      setMessage("BOSS DERROTADO! Recompensa: " + current.reward + " ouro.");
-    } else setMessage("Ataque: -" + hit + " HP do boss. Sofreste " + retaliation + " dano.");
+      setMessage("BOSS DERROTADO! +" + current.reward + " ouro.");
+    } else setMessage("Acertaste " + hit + " de dano. Sofreste " + retaliation + ".");
   };
 
   const heal = () => {
@@ -187,8 +234,8 @@ function Index() {
   };
 
   const buy = () => {
-    if (gold < 150) return setMessage("A arma custa 150 ouro.");
-    setGold(g => g - 150); setDamage(d => d + 15); setMessage("Brom vendeu uma espada. +15 dano!");
+    if (gold < 150) return setMessage("A espada custa 150 ouro.");
+    setGold(g => g - 150); setDamage(d => d + 15); setMessage("Espada equipada! +15 dano.");
   };
 
   const talkAria = () => {
@@ -198,85 +245,135 @@ function Index() {
     } else setMessage("Aria: derrota 5 monstros neste bioma e volta aqui.");
   };
 
-  const locked = (i:number) => level < BIOMES[i].level;
+  const locked = (i: number) => level < BIOMES[i].level;
 
   const toggleFullscreen = async () => {
-    if (!document.fullscreenElement) { await gameShellRef.current?.requestFullscreen?.(); setFullscreen(true); }
-    else { await document.exitFullscreen?.(); setFullscreen(false); }
+    try {
+      if (!document.fullscreenElement) await gameShellRef.current?.requestFullscreen?.();
+      else await document.exitFullscreen?.();
+    } catch {
+      setMessage("O navegador bloqueou a tela cheia. Tenta novamente.");
+    }
   };
 
-  useEffect(() => { const onFs = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", onFs); return () => document.removeEventListener("fullscreenchange", onFs); }, []);
+  useEffect(() => {
+    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
 
-  const press = (key:string) => {
+  const press = (key: string) => {
     keys.current.add(key);
     window.setTimeout(() => keys.current.delete(key), 150);
   };
 
   return (
-    <main ref={gameShellRef} className={`min-h-screen bg-[#111018] p-2 text-white md:p-4 ${fullscreen ? "overflow-auto" : ""}`} style={{ fontFamily: "monospace" }}>
-      <div className="mx-auto max-w-[1500px]">
-        <header className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b-4 border-[#302b3b] pb-3">
-          <div><h1 className="text-2xl font-black tracking-tight md:text-3xl">ADVENTURE FORGE</h1><p className="text-xs text-[#a9a2b5]">2D PIXEL RPG • MISSÕES • ARMAS • BOSSES</p></div>
-          <div className="flex flex-wrap gap-2 text-xs font-bold"><button onClick={toggleFullscreen} className="pixel-btn px-3">{fullscreen ? "SAIR DA TELA CHEIA" : "⛶ TELA CHEIA"}</button><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">LV {level}</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">HP {hp}/100</span><span className="border-2 border-[#40394d] bg-[#1d1925] px-3 py-2">G {gold}</span></div>
+    <main ref={gameShellRef} className={`min-h-screen bg-[#0b0a0f] p-2 text-white md:p-4 ${fullscreen ? "overflow-auto" : ""}`} style={{ fontFamily: "monospace" }}>
+      <div className={`mx-auto w-full ${fullscreen ? "max-w-none" : "max-w-[1600px]"}`}>
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b-4 border-[#302b3b] bg-[#121018] px-3 py-3 shadow-[0_5px_0_#07060a]">
+          <div>
+            <h1 className="text-2xl font-black tracking-[0.08em] md:text-3xl">ADVENTURE FORGE</h1>
+            <p className="mt-1 text-[10px] font-bold tracking-[0.18em] text-[#91899d]">THE OLD KINGDOM • 2D PIXEL RPG</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            <button onClick={toggleFullscreen} className="pixel-btn px-4">{fullscreen ? "↙ SAIR" : "⛶ TELA CHEIA"}</button>
+            <span className="hud-pill">LV {level}</span>
+            <span className="hud-pill">❤ {hp}/100</span>
+            <span className="hud-pill">◆ {gold}</span>
+          </div>
         </header>
 
-        <div className="grid min-h-[calc(100vh-100px)] gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section className="border-4 border-[#40394d] bg-[#18151f] p-2 shadow-[8px_8px_0_#09080d]">
-            <div className="overflow-auto bg-black">
-              <canvas ref={canvasRef} className="mx-auto block h-auto max-w-full lg:w-full" style={{ imageRendering: "pixelated" }} />
+        <div className={`grid gap-3 ${fullscreen ? "lg:grid-cols-[minmax(0,1fr)_380px]" : "lg:grid-cols-[minmax(0,1fr)_340px]"}`}>
+          <section className="relative min-w-0 border-4 border-[#40394d] bg-[#15121b] p-2 shadow-[8px_8px_0_#050407]">
+            <div className="relative overflow-hidden border-4 border-[#292430] bg-black">
+              <canvas ref={canvasRef} className="mx-auto block h-auto w-full" style={{ imageRendering: "pixelated", aspectRatio: `${W}/${H}` }} />
+              <div className="pointer-events-none absolute bottom-2 left-2 border-2 border-[#51495d] bg-[#0c0a10]/90 px-2 py-1 text-[9px] font-bold text-[#d7d0dd]">
+                {current.name} • LV RECOMENDADO {current.level}
+              </div>
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <button onClick={()=>press("arrowleft")} className="pixel-btn">◀</button>
-              <button onClick={()=>press("arrowup")} className="pixel-btn">▲</button>
-              <button onClick={()=>press("arrowright")} className="pixel-btn">▶</button>
-              <button onClick={()=>press("arrowdown")} className="pixel-btn">▼</button>
-              <button onClick={hunt} className="pixel-btn">ATACAR</button>
-              <button onClick={attackBoss} className="pixel-btn danger">BOSS</button>
+
+            <div className="mt-2 grid grid-cols-3 gap-2 md:max-w-[520px]">
+              <button onClick={() => press("arrowleft")} className="pixel-btn">◀</button>
+              <button onClick={() => press("arrowup")} className="pixel-btn">▲</button>
+              <button onClick={() => press("arrowright")} className="pixel-btn">▶</button>
+              <button onClick={() => press("arrowdown")} className="pixel-btn">▼</button>
+              <button onClick={hunt} className="pixel-btn">⚔ ATACAR</button>
+              <button onClick={attackBoss} className="pixel-btn danger">☠ BOSS</button>
             </div>
-            <style>{`.pixel-btn{border:3px solid #51495d;background:#292331;padding:10px;font-weight:900;font-size:12px;box-shadow:3px 3px 0 #0b0910}.pixel-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #0b0910}.pixel-btn:hover{background:#393142}.danger{background:#713445}`}</style>
           </section>
 
           <aside className="space-y-3">
-            <Panel title="MISSÃO — ARIA">
-              <p className="text-xs text-[#c5bfcc]">Derrota 5 inimigos em {current.name}.</p>
-              <div className="mt-2 h-4 border-2 border-[#51495d] bg-[#100e14]"><div className="h-full bg-[#62c47a]" style={{width: `${quest*20}%`}} /></div>
-              <p className="mt-1 text-xs">{quest}/5</p>
-              <button onClick={talkAria} className="pixel-btn mt-2 w-full">FALAR COM ARIA</button>
+            <Panel title="QUEST LOG">
+              <p className="text-xs text-[#c5bfcc]">Aria pede 5 inimigos derrotados em {current.name}.</p>
+              <div className="mt-3 h-4 border-2 border-[#51495d] bg-[#0c0a10]"><div className="h-full bg-[#65c97d]" style={{ width: `${quest * 20}%` }} /></div>
+              <div className="mt-1 flex justify-between text-[10px]"><span>PROGRESSO</span><b>{quest}/5</b></div>
+              <button onClick={talkAria} className="pixel-btn mt-3 w-full">FALAR COM ARIA</button>
             </Panel>
-            <Panel title={"BOSS — " + current.boss}>
-              <div className="flex justify-between text-xs"><span>HP</span><span>{bossHp}/{current.bossHp}</span></div>
-              <div className="mt-2 h-4 border-2 border-[#51495d] bg-[#100e14]"><div className="h-full bg-[#c84c63]" style={{width:`${Math.max(0,bossHp/current.bossHp*100)}%`}} /></div>
-              <button onClick={attackBoss} className="pixel-btn danger mt-2 w-full">ATACAR BOSS</button>
+
+            <Panel title={`BOSS • ${current.boss.toUpperCase()}`}>
+              <div className="mb-2 flex justify-between text-[10px]"><span>HP DO BOSS</span><b>{bossHp}/{current.bossHp}</b></div>
+              <div className="h-5 border-2 border-[#51495d] bg-[#0c0a10]"><div className="h-full bg-[#c94f67]" style={{ width: `${Math.max(0, bossHp / current.bossHp * 100)}%` }} /></div>
+              <button onClick={attackBoss} className="pixel-btn danger mt-3 w-full">ATACAR BOSS</button>
             </Panel>
-            <Panel title="NPCs">
-              <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
-                <button onClick={talkAria} className="npc">ARIA<br/><b>MISSÃO</b></button>
-                <button onClick={buy} className="npc">BROM<br/><b>ESPADA 150G</b></button>
-                <button onClick={heal} className="npc">LINA<br/><b>CURA 25G</b></button>
+
+            <Panel title="NPCs & LOJA">
+              <div className="grid grid-cols-3 gap-1 text-center text-[9px]">
+                <button onClick={talkAria} className="npc">!<br/><b>ARIA</b><br/>MISSÃO</button>
+                <button onClick={buy} className="npc">★<br/><b>BROM</b><br/>ESPADA 150G</button>
+                <button onClick={heal} className="npc">+<br/><b>LINA</b><br/>CURA 25G</button>
               </div>
+            </Panel>
+
+            <Panel title="EQUIPAMENTO">
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <Stat label="NÍVEL" value={String(level)} />
+                <Stat label="DANO" value={String(damage)} />
+                <Stat label="XP" value={xp + "/" + xpNeed} />
+                <Stat label="ABATES" value={String(kills)} />
+              </div>
+              <div className="mt-2 border-2 border-[#40394d] bg-[#0c0a10] p-2 text-[10px] leading-relaxed text-[#bcb4c4]">{message}</div>
             </Panel>
           </aside>
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <Panel title="MAPA-MÚNDI">
-            <div className="grid grid-cols-2 gap-2">
-              {BIOMES.map((b,i)=><button key={b.name} disabled={locked(i)} onClick={()=>setBiome(i)} className={`border-2 p-2 text-left text-xs ${i===biome?"border-[#d9b35d] bg-[#302938]":"border-[#40394d] bg-[#1d1925]"} ${locked(i)?"opacity-40":""}`}><b>{b.name}</b><br/><span className="text-[#aaa2b1]">{locked(i)?"LOCK LV "+b.level:"BOSS: "+b.boss}</span></button>)}
+        <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_.8fr]">
+          <Panel title="WORLD MAP">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              {BIOMES.map((b, i) => (
+                <button key={b.name} disabled={locked(i)} onClick={() => setBiome(i)} className={`border-2 p-3 text-left text-[10px] transition ${i === biome ? "border-[#d9b35d] bg-[#302938]" : "border-[#40394d] bg-[#17141d]"} ${locked(i) ? "opacity-40" : "hover:bg-[#27222f]"}`}>
+                  <b className="text-xs">{i === biome ? "◆ " : ""}{b.name}</b>
+                  <br/><span className="text-[#9e96a8]">{locked(i) ? "LOCK • LV " + b.level : "BOSS • " + b.boss}</span>
+                </button>
+              ))}
             </div>
           </Panel>
-          <Panel title="STATUS">
-            <div className="grid grid-cols-4 gap-2 text-center text-[10px]"><Stat label="XP" value={xp+"/"+xpNeed}/><Stat label="DANO" value={String(damage)}/><Stat label="ABATES" value={String(kills)}/><Stat label="OURO" value={String(gold)}/></div>
-            <div className="mt-2 border-2 border-[#40394d] bg-[#100e14] p-2 text-xs text-[#c5bfcc]">{message}</div>
+          <Panel title="JOURNAL">
+            <p className="text-[10px] leading-relaxed text-[#aaa2b1]">Explora cada região, completa as missões, compra equipamento e derrota o boss para desbloquear o próximo território.</p>
+            <div className="mt-2 flex items-center justify-between border-2 border-[#40394d] bg-[#0c0a10] p-2 text-[10px]"><span>PRÓXIMO LV</span><b>{Math.max(0, xpNeed - xp)} XP</b></div>
           </Panel>
         </div>
       </div>
+
+      <style>{`
+        .pixel-btn{border:3px solid #51495d;background:#292331;padding:10px;font-weight:900;font-size:11px;box-shadow:4px 4px 0 #07060a;transition:background .08s,transform .08s}
+        .pixel-btn:hover{background:#3b3446}
+        .pixel-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #07060a}
+        .danger{background:#713445}
+        .danger:hover{background:#8a3e53}
+        .hud-pill{border:2px solid #40394d;background:#1b1722;padding:9px 11px}
+        .npc{border:2px solid #40394d;background:#17141d;padding:8px;line-height:1.45}
+        .npc:hover{background:#292431}
+        :fullscreen{background:#0b0a0f;overflow:auto}
+        :fullscreen canvas{max-height:calc(100vh - 230px)}
+      `}</style>
     </main>
   );
 }
 
-function Panel({title,children}:{title:string;children:ReactNode}) {
-  return <div className="border-4 border-[#40394d] bg-[#1a1721] p-3 shadow-[4px_4px_0_#09080d]"><h2 className="mb-2 border-b-2 border-[#40394d] pb-2 text-sm font-black">{title}</h2>{children}</div>;
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="border-4 border-[#40394d] bg-[#18151f] p-3 shadow-[4px_4px_0_#07060a]"><h2 className="mb-2 border-b-2 border-[#40394d] pb-2 text-xs font-black tracking-[0.12em] text-[#ddd5e3]">{title}</h2>{children}</div>;
 }
-function Stat({label,value}:{label:string;value:string}) {
-  return <div className="border-2 border-[#40394d] bg-[#121017] p-2"><div className="text-[#88818f]">{label}</div><b>{value}</b></div>;
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div className="border-2 border-[#40394d] bg-[#0f0d13] p-2"><div className="text-[#777080]">{label}</div><b>{value}</b></div>;
 }
