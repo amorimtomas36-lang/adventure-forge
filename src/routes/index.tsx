@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export const Route = createFileRoute("/")({ component: Index });
 
@@ -265,7 +265,7 @@ function Index() {
   );
 }
 
-function Panel({title,children}:{title:string;children:React.ReactNode}) {
+function Panel({title,children}:{title:string;children:ReactNode}) {
   return <div className="border-4 border-[#40394d] bg-[#1a1721] p-3 shadow-[4px_4px_0_#09080d]"><h2 className="mb-2 border-b-2 border-[#40394d] pb-2 text-sm font-black">{title}</h2>{children}</div>;
 }
 function Stat({label,value}:{label:string;value:string}) {
