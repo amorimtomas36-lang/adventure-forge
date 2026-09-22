@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 
 export const Route = createFileRoute("/")({ component: Index });
@@ -7,6 +7,10 @@ export const Route = createFileRoute("/")({ component: Index });
 type Finding = { type: string; value: string; severity: "ALTA" | "MÉDIA" };
 
 function Index() {
+  useEffect(() => {
+    document.title = "APP SECURITY LAB — Key & Secret Scanner";
+  }, []);
+
   const [file, setFile] = useState<File | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -72,7 +76,7 @@ function Index() {
           <p className="mt-2 text-xs text-[#8f99ab]">Arrasta aqui ou escolhe um ficheiro do dispositivo.</p>
           <label htmlFor="app-file" className="pixel-btn mt-5 inline-block cursor-pointer">ESCOLHER FICHEIRO</label>
           <p className="mt-3 text-[9px] text-[#697284]">APK • IPA • ZIP • outros formatos</p>
-          <p className="mt-2 text-[8px] font-bold tracking-[0.18em] text-[#4f596b]">BUILD 2026.09 • SCANNER LOCAL • ATUALIZADA</p>
+          <p className="mt-2 text-[8px] font-bold tracking-[0.18em] text-[#4f596b]">BUILD 2026.09.22 • APP SECURITY LAB • SCANNER LOCAL</p>
         </section>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
