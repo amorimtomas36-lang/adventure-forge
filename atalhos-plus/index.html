@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f5fa"><title>Atalhos+ — Os teus atalhos</title>
+<style>
+:root{--bg:#f5f5fa;--card:#fff;--ink:#191923;--muted:#777784;--purple:#7758e8;--line:#e9e8ef}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{padding:25px 18px 15px;max-width:760px;margin:auto}h1{font-size:32px;margin:0 0 5px;letter-spacing:-1px}p{color:var(--muted);margin:0;line-height:1.45}.wrap{max-width:760px;margin:auto;padding:0 16px 40px}.tools{display:flex;gap:10px;margin:15px 0 22px}.search{flex:1;min-width:0;border:0;background:#fff;border-radius:14px;padding:14px;font-size:16px;box-shadow:0 2px 10px #17172a08}.add{border:0;background:var(--purple);color:white;border-radius:14px;padding:0 18px;font-weight:700;font-size:15px}.section{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.7px;margin:20px 2px 10px;text-transform:uppercase}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tile{border:1px solid #00000005;border-radius:21px;background:var(--card);padding:15px;min-height:155px;box-shadow:0 3px 13px #17172a08;display:flex;flex-direction:column;align-items:flex-start;gap:12px}.glyph{height:49px;width:49px;border-radius:14px;display:grid;place-items:center;font-size:25px;color:white}.tile strong{font-size:16px}.tile small{color:var(--muted);font-size:12px;line-height:1.4}.tile button{margin-top:auto;border:0;background:#f1efff;color:#5c43c8;padding:9px 12px;border-radius:10px;font-weight:700}.row{display:flex;gap:10px;align-items:center}.filebox{background:#fff;border-radius:18px;padding:17px;margin-top:12px}.filebox input{max-width:100%;margin-top:12px}.filebox pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;font-size:13px;color:#454552}.notice{font-size:13px;color:var(--muted);margin-top:10px}.footer{padding:22px 2px;color:var(--muted);font-size:12px}.hidden{display:none!important}@media(min-width:600px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header><h1>Atalhos<span style="color:var(--purple)">+</span></h1><p>As tuas ações rápidas, num só lugar.</p></header>
+<main class="wrap">
+<div class="tools"><input id="search" class="search" placeholder="🔎  Procurar atalhos…" aria-label="Procurar atalhos"><button class="add" id="newBtn">＋ Criar</button></div>
+<div class="section">Os meus atalhos</div><div class="grid" id="grid"></div>
+<div class="section">Ficheiros de texto</div>
+<section class="filebox"><strong>📄 Abrir ficheiro .txt</strong><p class="notice">Escolhe um ficheiro para ler o conteúdo aqui. Os scripts não são executados.</p><input id="file" type="file" accept=".txt,text/plain"><pre id="fileContent">O conteúdo do ficheiro aparece aqui.</pre></section>
+<p class="footer">Os atalhos são guardados neste navegador quando o armazenamento local está disponível. A abertura de jogos depende do Android e de o jogo estar instalado.</p>
+</main>
+<script>
+const defaults=[
+{id:'ff',name:'Abrir Free Fire',desc:'Aviso e tentativa de abrir o jogo',emoji:'🎮',color:'#ff7043',kind:'game'},
+{id:'note',name:'Nova nota',desc:'Criar uma nota rápida',emoji:'📝',color:'#f5a623',kind:'note'},
+{id:'txt',name:'Ler ficheiro .txt',desc:'Escolher e visualizar texto',emoji:'📄',color:'#4387ed',kind:'file'},
+{id:'web',name:'Abrir site',desc:'Abrir um endereço web',emoji:'🌐',color:'#25a879',kind:'web'}
+];
+let custom=[];try{custom=JSON.parse(localStorage.getItem('atalhosplus-custom')||'[]')}catch{}
+const grid=document.getElementById('grid');
+function all(){return [...defaults,...custom]}
+function render(){const q=document.getElementById('search').value.toLowerCase();grid.innerHTML='';all().filter(x=>(x.name+' '+x.desc).toLowerCase().includes(q)).forEach(x=>{const el=document.createElement('article');el.className='tile';el.innerHTML='<div class="glyph" style="background:'+safe(x.color)+'">'+safe(x.emoji)+'</div><strong></strong><small></small><button type="button">Executar ↗</button>';el.querySelector('strong').textContent=x.name;el.querySelector('small').textContent=x.desc;el.querySelector('button').onclick=()=>run(x);grid.appendChild(el)})}
+function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function run(x){if(x.kind==='game'){alert('A tentar abrir o Free Fire. Isto não ativa cheats nem altera o jogo.');location.href='intent://#Intent;package=com.dts.freefireth;end';setTimeout(()=>{alert('Se não abriu, confirma se o Free Fire está instalado. Em algumas versões do Android, o navegador bloqueia esta ação.');},1200)}else if(x.kind==='note'){const n=prompt('Escreve a tua nota:');if(n!==null){try{let a=JSON.parse(localStorage.getItem('atalhosplus-notes')||'[]');a.push({text:n,date:new Date().toLocaleString('pt-PT')});localStorage.setItem('atalhosplus-notes',JSON.stringify(a));alert('Nota guardada neste navegador.')}catch{alert(n)}}}else if(x.kind==='file'){document.getElementById('file').click()}else if(x.kind==='web'){let u=prompt('Endereço do site (ex.: https://example.com):');if(u){if(!/^https?:\/\//i.test(u))u='https://'+u;try{let url=new URL(u);if(url.protocol==='https:'||url.protocol==='http:')window.open(url.href,'_blank','noopener')}catch{alert('Endereço inválido.')}}}else if(x.kind==='custom'){alert('Atalho personalizado: '+x.desc)}}
+document.getElementById('search').addEventListener('input',render);
+document.getElementById('newBtn').onclick=()=>{let name=prompt('Nome do atalho:');if(!name||!name.trim())return;let desc=prompt('O que deve fazer?');if(desc===null)return;custom.push({id:'c'+Date.now(),name:name.trim(),desc:desc.trim()||'Atalho personalizado',emoji:'⚡',color:'#7758e8',kind:'custom'});try{localStorage.setItem('atalhosplus-custom',JSON.stringify(custom))}catch{}render()};
+document.getElementById('file').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{document.getElementById('fileContent').textContent=await f.text()}catch{document.getElementById('fileContent').textContent='Não foi possível ler este ficheiro.'}});
+render();
+</script></body></html>
