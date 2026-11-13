@@ -1,4 +1,4 @@
-import os, re, time
+import os, re, time, asyncio
 from pathlib import Path
 from typing import Literal
 import httpx
@@ -11,6 +11,100 @@ SUPABASE_URL=os.getenv("SUPABASE_URL","").rstrip("/")
 SUPABASE_KEY=os.getenv("SUPABASE_PUBLISHABLE_KEY","")
 CACHE={"at":0,"items":[]}
 MODEL_CACHE={}
+FREELLMAPI_URL=os.getenv("FREELLMAPI_URL","").rstrip("/")
+FREELLMAPI_ADMIN_EMAIL=os.getenv("FREELLMAPI_ADMIN_EMAIL","").strip()
+FREELLMAPI_ADMIN_PASSWORD=os.getenv("FREELLMAPI_ADMIN_PASSWORD","")
+FREELLMAPI_API_KEY=os.getenv("FREELLMAPI_API_KEY","").strip()
+FREELLMAPI_KEY_CACHE={"key":"","at":0}
+FREELLMAPI_MODELS_CACHE={"at":0,"items":[]}
+FREELLMAPI_LOCK=asyncio.Lock()
+FREEAI_RATE={"global":[],"users":{}}
+
+async def freellmapi_api_key():
+    if not FREELLMAPI_URL:
+        raise HTTPException(503,"O router gratuito ainda não está configurado.")
+    if FREELLMAPI_API_KEY:
+        return FREELLMAPI_API_KEY
+    if not FREELLMAPI_ADMIN_EMAIL or not FREELLMAPI_ADMIN_PASSWORD:
+        raise HTTPException(503,"As credenciais internas do router ainda não estão configuradas.")
+    now=time.monotonic()
+    cached=FREELLMAPI_KEY_CACHE
+    if cached["key"] and now-cached["at"]<600:
+        return cached["key"]
+    async with FREELLMAPI_LOCK:
+        now=time.monotonic()
+        cached=FREELLMAPI_KEY_CACHE
+        if cached["key"] and now-cached["at"]<600:
+            return cached["key"]
+        try:
+            async with httpx.AsyncClient(timeout=20) as c:
+                login=await c.post(FREELLMAPI_URL+"/api/auth/login",json={
+                    "email":FREELLMAPI_ADMIN_EMAIL,
+                    "password":FREELLMAPI_ADMIN_PASSWORD
+                })
+                if login.status_code!=200:
+                    raise HTTPException(503,"O router gratuito não conseguiu autenticar-se.")
+                token=login.json().get("token")
+                if not token:
+                    raise HTTPException(503,"O router gratuito não devolveu uma sessão válida.")
+                key_response=await c.get(FREELLMAPI_URL+"/api/settings/api-key",
+                    headers={"Authorization":"Bearer "+token})
+                if key_response.status_code!=200:
+                    raise HTTPException(503,"Não foi possível obter a chave interna do router.")
+                api_key=key_response.json().get("apiKey","")
+                if not api_key:
+                    raise HTTPException(503,"O router não disponibilizou uma chave de API.")
+                FREELLMAPI_KEY_CACHE.update({"key":api_key,"at":time.monotonic()})
+                return api_key
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(503,"O router gratuito está temporariamente indisponível.")
+
+def enforce_freeai_rate(user_id):
+    now=time.time()
+    window=3600
+    global_events=[t for t in FREEAI_RATE["global"] if now-t<window]
+    user_events=[t for t in FREEAI_RATE["users"].get(user_id,[]) if now-t<window]
+    if len(global_events)>=150:
+        FREEAI_RATE["global"]=global_events
+        raise HTTPException(429,"A quota gratuita partilhada atingiu o limite temporário. Tenta novamente mais tarde.")
+    if len(user_events)>=20:
+        FREEAI_RATE["global"]=global_events
+        FREEAI_RATE["users"][user_id]=user_events
+        raise HTTPException(429,"A tua quota de utilização gratuita nesta hora foi atingida. Tenta novamente mais tarde.")
+    global_events.append(now)
+    user_events.append(now)
+    FREEAI_RATE["global"]=global_events
+    FREEAI_RATE["users"][user_id]=user_events
+    if len(FREEAI_RATE["users"])>5000:
+        FREEAI_RATE["users"]={k:v for k,v in FREEAI_RATE["users"].items() if v and now-v[-1]<window}
+
+async def freellmapi_models():
+    now=time.monotonic()
+    if FREELLMAPI_MODELS_CACHE["items"] and now-FREELLMAPI_MODELS_CACHE["at"]<90:
+        return FREELLMAPI_MODELS_CACHE["items"]
+    api_key=await freellmapi_api_key()
+    try:
+        async with httpx.AsyncClient(timeout=25) as c:
+            r=await c.get(FREELLMAPI_URL+"/v1/models",params={"available":"true"},
+                headers={"Authorization":"Bearer "+api_key})
+        if r.status_code>=400:
+            raise HTTPException(502,"O catálogo de modelos gratuitos está temporariamente indisponível.")
+        data=r.json()
+        items=[{"id":"auto","name":"Automático · escolhe o melhor modelo grátis","free":True}]
+        for model in data.get("data",[]):
+            if not isinstance(model,dict): continue
+            model_id=model.get("id")
+            if not model_id or model_id=="auto": continue
+            items.append({"id":str(model_id),"name":str(model.get("name") or model_id),"free":True})
+        FREELLMAPI_MODELS_CACHE.update({"at":time.monotonic(),"items":items})
+        return items
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(502,"Não foi possível carregar o catálogo gratuito.")
+
 
 def provider_configs():
     cf_account=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip()
@@ -47,16 +141,27 @@ async def home():
 @app.get("/api/health")
 async def health():
     configured=[k for k,v in provider_configs().items() if provider_is_configured(v)]
-    return {"ok":True,"auth_configured":bool(SUPABASE_URL and SUPABASE_KEY),"ai_configured":bool(configured),"providers_configured":configured}
+    freellmapi_configured=bool(FREELLMAPI_URL and (FREELLMAPI_API_KEY or (FREELLMAPI_ADMIN_EMAIL and FREELLMAPI_ADMIN_PASSWORD)))
+    if freellmapi_configured: configured.insert(0,"freellmapi")
+    return {"ok":True,"auth_configured":bool(SUPABASE_URL and SUPABASE_KEY),"ai_configured":bool(configured),"providers_configured":configured,"freellmapi_configured":freellmapi_configured}
 
 @app.get("/api/providers")
 async def providers(authorization:str|None=Header(default=None)):
     await user_from_token(authorization)
-    return {"providers":[{"id":k,"label":v["label"],"configured":provider_is_configured(v)} for k,v in provider_configs().items()]}
+    rows=[{"id":k,"label":v["label"],"configured":provider_is_configured(v)} for k,v in provider_configs().items()]
+    freellmapi_configured=bool(FREELLMAPI_URL and (FREELLMAPI_API_KEY or (FREELLMAPI_ADMIN_EMAIL and FREELLMAPI_ADMIN_PASSWORD)))
+    if freellmapi_configured:
+        rows.insert(0,{"id":"freellmapi","label":"FreeLLMAPI · modelos grátis","configured":True})
+    return {"providers":rows}
 
 @app.get("/api/models")
 async def models(provider:str=Query(min_length=1,max_length=32),q:str=Query(default="",max_length=100),authorization:str|None=Header(default=None)):
     await user_from_token(authorization)
+    if provider=="freellmapi":
+        items=await freellmapi_models()
+        needle=q.casefold().strip()
+        if needle: items=[x for x in items if needle in (x["id"]+" "+x["name"]).casefold()]
+        return {"provider":"freellmapi","total":len(items),"items":items[:200]}
     configs=provider_configs()
     cfg=configs.get(provider)
     if not cfg: raise HTTPException(400,"Fornecedor desconhecido.")
@@ -121,7 +226,35 @@ class Chat(BaseModel):
 
 @app.post("/api/chat")
 async def chat(body:Chat,authorization:str|None=Header(default=None)):
-    await user_from_token(authorization)
+    current_user=await user_from_token(authorization)
+    if body.provider=="freellmapi":
+        enforce_freeai_rate(str(current_user.get("id") or "unknown"))
+        api_key=await freellmapi_api_key()
+        system={"chat":"És a Nova AI, assistente útil, direto e rigoroso. Responde na língua do utilizador.",
+                "code":"És a Nova AI, especialista em programação. Produz código seguro e funcional.",
+                "writing":"És a Nova AI, especialista em escrita e documentos."}[body.mode]
+        msgs=[{"role":"system","content":system}]+body.messages
+        try:
+            async with httpx.AsyncClient(timeout=150) as c:
+                r=await c.post(FREELLMAPI_URL+"/v1/chat/completions",
+                    headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json"},
+                    json={"model":body.model or "auto","messages":msgs})
+        except Exception:
+            raise HTTPException(502,"O router gratuito não respondeu a tempo.")
+        if r.status_code==429:
+            raise HTTPException(429,"O fornecedor gratuito está ocupado ou atingiu o limite. Tenta novamente mais tarde.")
+        if r.status_code>=400:
+            raise HTTPException(502,"Nenhum modelo gratuito conseguiu responder neste momento.")
+        try:
+            data=r.json()
+            reply=data["choices"][0]["message"]["content"]
+            if isinstance(reply,list):
+                reply="".join(str(part.get("text","")) for part in reply if isinstance(part,dict))
+            if not isinstance(reply,str) or not reply.strip(): raise ValueError("empty reply")
+        except (KeyError,IndexError,TypeError,ValueError):
+            raise HTTPException(502,"O fornecedor devolveu uma resposta num formato inesperado.")
+        routed=r.headers.get("x-routed-via","modelo gratuito")
+        return {"reply":reply,"provider":"FreeLLMAPI · "+routed,"model":body.model or "auto"}
     cfg=provider_configs().get(body.provider)
     if not cfg: raise HTTPException(400,"Fornecedor desconhecido.")
     if not provider_is_configured(cfg): raise HTTPException(503,"Adiciona a chave deste fornecedor nas variáveis privadas do Render.")
@@ -196,8 +329,8 @@ document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{mode=b.datase
 async function save(role,content){let {data:session}=await db.auth.getSession();if(!conversation){let r=await db.from("conversations").insert({user_id:user.id,title:content.slice(0,55),provider:$("#providerSelect").value,model:$("#modelSelect").value}).select("id").single();if(r.error)throw r.error;conversation=r.data.id}let r=await db.from("messages").insert({conversation_id:conversation,user_id:user.id,role,content});if(r.error)throw r.error;await db.from("conversations").update({updated_at:new Date().toISOString(),provider:$("#providerSelect").value,model:$("#modelSelect").value}).eq("id",conversation);await loadHistory()}
 async function send(){let text=$("#prompt").value.trim();if(!text)return;$("#prompt").value="";add("user",text);messages.push({role:"user",content:text});$("#send").disabled=true;try{await save("user",text);let {data:s}=await db.auth.getSession();let r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+s.session.access_token},body:JSON.stringify({messages,mode,provider:$("#providerSelect").value,model:$("#modelSelect").value})});let j=await r.json();if(!r.ok)throw Error(j.detail||"Erro na IA");add("assistant",j.reply);messages.push({role:"assistant",content:j.reply});await save("assistant",j.reply)}catch(e){add("assistant","Erro: "+e.message)}finally{$("#send").disabled=false}}
 $("#send").onclick=send;$("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};
-async function loadProviders(){let {data:s}=await db.auth.getSession();let r=await fetch("/api/providers",{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();let sel=$("#providerSelect");sel.replaceChildren();for(let p of (j.providers||[])){let o=document.createElement("option");o.value=p.id;o.textContent=p.label+(p.configured?"":" · por configurar");sel.append(o)}let preferred=(j.providers||[]).find(p=>p.configured);if(preferred)sel.value=preferred.id;await loadModels()}
-async function loadModels(){let provider=$("#providerSelect").value;let sel=$("#modelSelect");sel.replaceChildren();$("#status").textContent="A obter modelos...";let {data:s}=await db.auth.getSession();let q=$("#modelSearch").value.trim();let r=await fetch("/api/models?provider="+encodeURIComponent(provider)+"&q="+encodeURIComponent(q),{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){let o=document.createElement("option");o.textContent=j.detail||"Fornecedor por configurar";sel.append(o);$("#status").textContent="Chave necessária";return}modelList=j.items||[];for(let m of modelList){let o=document.createElement("option");o.value=m.id;o.textContent=m.name+(m.free?" · grátis":"");sel.append(o)}$("#status").textContent=modelList.length+" modelos"+(provider==="kilo"?" · grátis; não envies dados privados":"");if(!modelList.length){let o=document.createElement("option");o.textContent="Nenhum modelo encontrado";sel.append(o)}}
+async function loadProviders(){let {data:s}=await db.auth.getSession();let r=await fetch("/api/providers",{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();let sel=$("#providerSelect");sel.replaceChildren();for(let p of (j.providers||[])){let o=document.createElement("option");o.value=p.id;o.textContent=p.label+(p.configured?"":" · por configurar");sel.append(o)}let preferred=(j.providers||[]).find(p=>p.id==="freellmapi"&&p.configured)||(j.providers||[]).find(p=>p.configured);if(preferred)sel.value=preferred.id;await loadModels()}
+async function loadModels(){let provider=$("#providerSelect").value;let sel=$("#modelSelect");sel.replaceChildren();$("#status").textContent="A obter modelos...";let {data:s}=await db.auth.getSession();let q=$("#modelSearch").value.trim();let r=await fetch("/api/models?provider="+encodeURIComponent(provider)+"&q="+encodeURIComponent(q),{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){let o=document.createElement("option");o.textContent=j.detail||"Fornecedor por configurar";sel.append(o);$("#status").textContent="Chave necessária";return}modelList=j.items||[];for(let m of modelList){let o=document.createElement("option");o.value=m.id;o.textContent=m.name+(m.free?" · grátis":"");sel.append(o)}$("#status").textContent=modelList.length+" modelos"+(provider==="freellmapi"?" · grátis; evita dados pessoais (alguns fornecedores registam pedidos)":provider==="kilo"?" · grátis; evita dados pessoais":"");if(!modelList.length){let o=document.createElement("option");o.textContent="Nenhum modelo encontrado";sel.append(o)}}
 $("#providerSelect").onchange=()=>loadModels();$("#modelSearch").oninput=()=>loadModels();
 async function loadCatalog(){let {data:s}=await db.auth.getSession();let q=$("#searchApi").value;let r=await fetch("/api/catalog?q="+encodeURIComponent(q)+"&offset="+offset,{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){$("#apiList").textContent=j.detail;return}$("#catalogCount").textContent=j.total+" APIs encontradas";for(let a of j.items){let d=document.createElement("div");d.className="api";let link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent=a.name;let p=document.createElement("p");p.textContent=a.description+" · Categoria: "+a.category+" · Auth: "+a.auth;d.append(link,p);$("#apiList").append(d)}}
 $("#showCatalog").onclick=()=>{$("#catalog").classList.remove("hidden");offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#closeCatalog").onclick=()=>$("#catalog").classList.add("hidden");$("#searchApi").oninput=()=>{offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#more").onclick=()=>{offset+=50;loadCatalog()};
