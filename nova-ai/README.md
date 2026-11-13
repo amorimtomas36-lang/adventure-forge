@@ -15,7 +15,11 @@ This folder is a Docker web service. Configure the following in Render Environme
 - `MISTRAL_API_KEY`
 - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`
 
-Kilo Gateway is included as an anonymous free-model option and does not need a server API key. Kilo documents a 200 requests/hour/IP anonymous limit for free models; the quota is shared by requests leaving the Render service. Some free upstream models may log prompts/outputs, so users should not send personal or confidential information through those models.
+FreeLLMAPI is integrated as the default free-model router. It runs as a separate Render service; the Nova AI backend authenticates to it server-side and never sends the router's administrative or unified API key to the browser. The preconfigured no-key upstreams are Kilo Gateway, OVHcloud AI Endpoints, and AI Horde. The Nova backend limits this shared free pool to 20 requests/hour per signed-in account and 150 requests/hour globally. Upstream limits still apply; queues and availability vary.
+
+FreeLLMAPI supports additional provider integrations, but most require a separate account/API key. Those providers are not automatically enabled just because they appear in the catalog. Add credentials only through server-side configuration. Kilo may log prompts and outputs for training, and AI Horde uses volunteer workers; do not send personal or confidential information through these free routes.
+
+Both services use Render's free plan. Free instances can sleep and have ephemeral filesystems, so FreeLLMAPI recreates its administrator and keyless-provider setup from protected environment configuration after a restart. Local analytics and cooldown history can reset, and the first request after sleep may take longer. Do not treat the repository's advertised provider/model count as a guarantee that every upstream is currently available without a key.
 
 Run `supabase.sql` in Supabase SQL Editor before enabling accounts. Enable email sign-up and configure the allowed redirect URL as `https://nova-ai-3cm8.onrender.com`.
 
@@ -29,7 +33,7 @@ OAuth client secrets must never be committed to GitHub or placed in browser code
 
 ## AI providers
 
-The selector supports OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, Cloudflare Workers AI, and Kilo Gateway. Provider model catalogs are fetched from each service. Except for Kilo's documented anonymous free models, each integration needs its own server-side credentials and may have quotas or costs.
+The selector supports FreeLLMAPI, OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, Cloudflare Workers AI, and the direct Kilo Gateway option. FreeLLMAPI supplies the default automatically routed free pool; the other providers still require their own server-side credentials and may have quotas or costs. The FreeLLMAPI router is single-user internally, so only the Nova backend can access it; Supabase remains responsible for per-account identity and history isolation.
 
 ## API directory
 
