@@ -341,8 +341,8 @@ HTML = r"""<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name
 window.supabaseSdkReady=new Promise((resolve,reject)=>{
  if(window.supabase&&window.supabase.createClient){resolve(window.supabase);return}
  const sources=[
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
-  "https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+  "https://unpkg.com/@supabase/supabase-js@2"
  ];
  let index=0;
  const next=()=>{
