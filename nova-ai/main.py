@@ -150,6 +150,28 @@ async def health():
     if freellmapi_configured: configured.insert(0,"freellmapi")
     return {"ok":True,"auth_configured":bool(SUPABASE_URL and SUPABASE_KEY),"ai_configured":bool(configured),"providers_configured":configured,"freellmapi_configured":freellmapi_configured}
 
+@app.get("/api/auth/config")
+async def auth_config():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return {"email_enabled":False,"providers":{},"configured":False}
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            r=await c.get(SUPABASE_URL+"/auth/v1/settings",
+                headers={"apikey":SUPABASE_KEY})
+        if r.status_code>=400:
+            return {"email_enabled":False,"providers":{},"configured":False}
+        data=r.json()
+        external=data.get("external") or {}
+        names=("google","discord","github","apple")
+        return {
+            "configured":True,
+            "email_enabled":not bool(data.get("disable_signup",False)),
+            "providers":{name:bool(external.get(name,False)) for name in names},
+            "email_confirmation":not bool(data.get("mailer_autoconfirm",False))
+        }
+    except Exception:
+        return {"email_enabled":False,"providers":{},"configured":False}
+
 @app.get("/api/providers")
 async def providers(authorization:str|None=Header(default=None)):
     await user_from_token(authorization)
@@ -315,25 +337,110 @@ async def catalog(authorization:str|None=Header(default=None),q:str=Query(defaul
     if needle: items=[x for x in items if needle in (x["name"]+" "+x["description"]+" "+x["category"]).casefold()]
     return {"total":len(items),"items":items[max(0,offset):max(0,offset)+50],"source":"https://github.com/public-apis/public-apis","note":"Diretório de APIs: nem todas são gratuitas ou dispensam chave. A listagem não executa serviços de terceiros."}
 
-HTML = r"""<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10131b"><title>Nova AI</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><style>
+HTML = r"""<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10131b"><title>Nova AI</title><script>
+window.supabaseSdkReady=new Promise((resolve,reject)=>{
+ if(window.supabase&&window.supabase.createClient){resolve(window.supabase);return}
+ const sources=[
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
+  "https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"
+ ];
+ let index=0;
+ const next=()=>{
+  if(window.supabase&&window.supabase.createClient){resolve(window.supabase);return}
+  if(index>=sources.length){reject(new Error("Não foi possível carregar o módulo de autenticação."));return}
+  const s=document.createElement("script");s.src=sources[index++];
+  s.onload=()=>window.supabase&&window.supabase.createClient?resolve(window.supabase):next();
+  s.onerror=next;document.head.appendChild(s);
+ };
+ next();
+});
+</script><style>
 *{box-sizing:border-box}body{margin:0;background:#10131b;color:#eef2fa;font:15px system-ui}button,input,textarea,select{font:inherit}button{cursor:pointer}select,.model-search{background:#101620;color:#eef2fa;border:1px solid #39445a;border-radius:8px;padding:8px;max-width:190px}.model-search{width:130px}.hidden{display:none!important}.auth{min-height:100vh;display:grid;place-items:center;padding:20px}.card{width:min(420px,100%);background:#191f2c;border:1px solid #30394c;border-radius:18px;padding:26px}.card input{width:100%;padding:12px;margin:7px 0 14px;background:#0f141e;color:white;border:1px solid #39445a;border-radius:9px}.primary{background:#8b7cff;color:white;border:0;padding:12px;border-radius:9px;width:100%}.social-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}.social{padding:11px;background:#101620;color:#eef2fa;border:1px solid #39445a;border-radius:9px}.social.google{grid-column:1/-1;background:#f4f5f7;color:#202124;border-color:#f4f5f7;font-weight:650}.auth-divider{display:flex;align-items:center;gap:10px;color:#9ca8bb;font-size:12px;margin:14px 0}.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#30394c;flex:1}.app{display:flex;height:100vh}.side{width:250px;background:#0b0f17;padding:16px;display:flex;flex-direction:column;gap:9px}.side button,.mode button{padding:10px;background:#1a2130;color:#ddd;border:1px solid #30394c;border-radius:9px}.hist{overflow:auto;flex:1;display:flex;flex-direction:column;gap:5px}.hist button{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.main{flex:1;display:flex;flex-direction:column;min-width:0}.top{padding:16px;border-bottom:1px solid #30394c}.messages{flex:1;overflow:auto;padding:24px max(16px,9%)}.msg{max-width:800px;margin:0 auto 18px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.who{color:#b9afff;font-weight:700}.composer{width:min(850px,calc(100% - 24px));margin:0 auto 12px;background:#1a2130;border:1px solid #39445a;border-radius:14px;padding:10px}.composer textarea{width:100%;background:transparent;color:white;border:0;outline:0;resize:vertical;padding:8px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row button{padding:8px 11px;border-radius:8px;border:1px solid #30394c;background:#151b27;color:#ddd}.catalog{position:fixed;inset:5%;background:#171e2b;border:1px solid #39445a;border-radius:16px;padding:18px;overflow:auto}.api{padding:12px;border:1px solid #39445a;border-radius:10px;margin:8px 0}.muted{color:#9ca8bb;font-size:12px}@media(max-width:700px){.side{width:150px;padding:9px}.messages{padding:16px 10px}.catalog{inset:2%}.top{padding:12px}}
 </style></head><body>
-<section id="auth" class="auth"><div class="card"><h1>✦ Nova AI</h1><p class="muted">A tua conta e o teu histórico privado.</p><div class="social-grid"><button class="social google" data-oauth="google">G&nbsp; Continuar com Google</button><button class="social" data-oauth="discord">Discord</button><button class="social" data-oauth="github">GitHub</button><button class="social" data-oauth="apple">Apple</button></div><div class="auth-divider"><span>ou entra com email</span></div><form id="authForm"><input id="email" type="email" placeholder="Email" required><input id="password" type="password" minlength="8" placeholder="Palavra-passe (mín. 8)" required><button id="authSubmit" class="primary">Entrar</button></form><p id="authMsg" class="muted"></p><button id="toggle" style="background:none;border:0;color:#b9afff">Criar conta nova</button></div></section>
+<section id="auth" class="auth"><div class="card"><h1>✦ Nova AI</h1><p class="muted">A tua conta e o teu histórico privado.</p><div class="social-grid"><button class="social google" data-oauth="google">G&nbsp; Continuar com Google</button><button class="social" data-oauth="discord">Discord</button><button class="social" data-oauth="github">GitHub</button><button class="social" data-oauth="apple">Apple</button></div><p id="authProviderHint" class="muted">A verificar os métodos de entrada...</p><div class="auth-divider"><span>ou entra com email</span></div><form id="authForm"><input id="email" type="email" placeholder="Email" required><input id="password" type="password" minlength="8" placeholder="Palavra-passe (mín. 8)" required><button id="authSubmit" class="primary">Entrar</button></form><p id="authMsg" class="muted" role="status" aria-live="polite"></p><button id="resendConfirm" class="social hidden" type="button">Reenviar email de confirmação</button><button id="toggle" style="background:none;border:0;color:#b9afff">Criar conta nova</button></div></section>
 <div id="app" class="app hidden"><aside class="side"><h2>✦ Nova AI</h2><button id="new">＋ Nova conversa</button><button id="showCatalog">▦ Catálogo de APIs</button><b class="muted">HISTÓRICO</b><div id="history" class="hist"></div><button id="logout">Terminar sessão</button></aside><main class="main"><div class="top row"><b id="heading">Nova conversa</b><select id="providerSelect" aria-label="Fornecedor"></select><input id="modelSearch" class="model-search" placeholder="Filtrar modelos"><select id="modelSelect" aria-label="Modelo"><option>Carregar modelos</option></select><span class="muted" id="status">Online</span></div><div id="messages" class="messages"><div class="msg"><h2>O que vamos criar hoje?</h2><p class="muted">Sites · Programação · Documentos · Ideias</p></div></div><div class="composer"><div class="row mode"><button data-mode="chat">Conversar</button><button data-mode="code">Programar</button><button data-mode="writing">Escrever</button></div><textarea id="prompt" rows="3" placeholder="Escreve a tua mensagem..."></textarea><div class="row"><span class="muted" style="flex:1">A IA pode cometer erros.</span><button id="send" class="primary" style="width:auto">Enviar ↑</button></div></div></main></div>
 <div id="catalog" class="catalog hidden"><div class="row"><h2 style="flex:1">Catálogo de APIs</h2><button id="closeCatalog">Fechar ×</button></div><p class="muted" id="catalogCount">A carregar...</p><input id="searchApi" placeholder="Pesquisar APIs..." style="width:100%;padding:12px;background:#101620;color:white;border:1px solid #39445a;border-radius:9px"><div id="apiList"></div><button id="more">Carregar mais</button><p class="muted">Fonte: public-apis/public-apis. Algumas APIs exigem chave ou pagamento; o catálogo não fornece acesso universal.</p></div>
 <script>
+window.supabaseSdkReady.then(()=>{
 const URL="__SUPABASE_URL__",KEY="__SUPABASE_KEY__",ready=URL.startsWith("https://")&&KEY&&!URL.includes("__SUPABASE");
-const db=ready?supabase.createClient(URL,KEY):null;let user=null,conversation=null,messages=[],mode="chat",signup=false,offset=0,modelList=[];
+const db=ready&&window.supabase?window.supabase.createClient(URL,KEY):null;let user=null,conversation=null,messages=[],mode="chat",signup=false,offset=0,modelList=[],pendingEmail=null,authProviderStatus={};
 const $=s=>document.querySelector(s),auth=$("#auth"),app=$("#app");
 function note(t){$("#authMsg").textContent=t}
+async function loadAuthConfig(){
+ try{
+  const r=await fetch("/api/auth/config");
+  const config=await r.json();
+  authProviderStatus=config.providers||{};
+  const enabled=Object.entries(authProviderStatus).filter(([k,v])=>v).map(([k])=>k);
+  const disabled=Object.keys(authProviderStatus).filter(k=>!authProviderStatus[k]);
+  $("#authProviderHint").textContent=enabled.length
+   ?"Ativos: "+enabled.join(", ")+(disabled.length?" · Por configurar: "+disabled.join(", "):"")
+   :"Google, Discord, GitHub e Apple ainda precisam de credenciais próprias no Supabase.";
+  if(!config.configured) $("#authProviderHint").textContent="O Supabase não respondeu à verificação da autenticação.";
+  if(!config.email_enabled) note("O registo por email está desativado na configuração do Supabase.");
+ }catch(e){
+  $("#authProviderHint").textContent="Não foi possível verificar os logins sociais.";
+ }
+}
 function add(role,text){let d=document.createElement("div");d.className="msg";let b=document.createElement("b");b.className="who";b.textContent=role==="user"?"Tu":"Nova AI";let p=document.createElement("div");p.textContent=text;d.append(b,p);$("#messages").append(d);$("#messages").scrollTop=$("#messages").scrollHeight;return p}
 async function enter(u){user=u;auth.classList.add("hidden");app.classList.remove("hidden");await loadProviders();await loadHistory()}
 async function loadHistory(){let {data,error}=await db.from("conversations").select("id,title,updated_at,provider,model").order("updated_at",{ascending:false}).limit(50);let box=$("#history");box.replaceChildren();if(error){box.textContent="Erro ao carregar histórico";return}for(let c of data||[]){let b=document.createElement("button");b.textContent=c.title;b.onclick=()=>openConversation(c);box.append(b)}}
 async function openConversation(c){let {data,error}=await db.from("messages").select("role,content").eq("conversation_id",c.id).order("created_at");if(error)return alert("Não foi possível abrir.");conversation=c.id;messages=data||[];$("#messages").replaceChildren();messages.forEach(m=>add(m.role,m.content));if(c.provider){$("#providerSelect").value=c.provider;await loadModels();if(c.model)$("#modelSelect").value=c.model}}
-$("#toggle").onclick=()=>{signup=!signup;$("#authSubmit").textContent=signup?"Criar conta":"Entrar";$("#toggle").textContent=signup?"Já tenho conta":"Criar conta nova";note("")};
-async function socialLogin(provider){if(!db)return note("A autenticação ainda não foi configurada.");note("A abrir o acesso "+provider+"...");const {error}=await db.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}});if(error)note("Não foi possível iniciar: "+error.message)}
+$("#toggle").onclick=()=>{
+ signup=!signup;pendingEmail=null;$("#resendConfirm").classList.add("hidden");
+ $("#authSubmit").textContent=signup?"Criar conta":"Entrar";
+ $("#toggle").textContent=signup?"Já tenho conta":"Criar conta nova";
+ $("#password").autocomplete=signup?"new-password":"current-password";
+ note(signup?"Cria uma conta com email e uma palavra-passe de pelo menos 8 caracteres.":"");
+};
+async function socialLogin(provider){
+ if(!db)return note("O módulo de autenticação não carregou. Atualiza a página e tenta novamente.");
+ if(authProviderStatus[provider]!==true){
+  return note("O login "+provider+" ainda não está ativado no Supabase. É necessário configurar o Client ID e o Client Secret desse fornecedor.");
+ }
+ note("A abrir o acesso "+provider+"...");
+ try{
+  const {error}=await db.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}});
+  if(error)note("Falha no acesso "+provider+": "+error.message);
+ }catch(e){note("Não foi possível iniciar o acesso "+provider+": "+e.message)}
+}
 document.querySelectorAll("[data-oauth]").forEach(b=>b.addEventListener("click",()=>socialLogin(b.dataset.oauth)));
-$("#authForm").onsubmit=async e=>{e.preventDefault();if(!db)return note("A autenticação ainda não foi configurada pelo administrador.");let email=$("#email").value,password=$("#password").value;let r=signup?await db.auth.signUp({email,password}):await db.auth.signInWithPassword({email,password});if(r.error)return note(r.error.message);if(r.data.session)enter(r.data.user);else note("Confirma o email e depois entra.")};
+$("#authForm").onsubmit=async e=>{
+ e.preventDefault();
+ if(!db)return note("O módulo de autenticação não carregou. Atualiza a página e tenta novamente.");
+ const email=$("#email").value.trim(),password=$("#password").value;
+ $("#authSubmit").disabled=true;note(signup?"A criar a tua conta...":"A iniciar sessão...");
+ try{
+  const r=signup
+   ?await db.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}})
+   :await db.auth.signInWithPassword({email,password});
+  if(r.error){
+   const message=r.error.message||"Erro de autenticação.";
+   if(/already registered|user already exists/i.test(message)) note("Este email já tem conta. Escolhe «Já tenho conta» para entrar.");
+   else if(/invalid login credentials/i.test(message)) note("Email ou palavra-passe incorretos.");
+   else if(/password/i.test(message)) note("A palavra-passe não cumpre os requisitos do Supabase: "+message);
+   else note("Não foi possível "+(signup?"criar a conta: ":"iniciar sessão: ")+message);
+   return;
+  }
+  if(r.data.session){pendingEmail=null;$("#resendConfirm").classList.add("hidden");await enter(r.data.user);}
+  else if(signup&&r.data.user){
+   pendingEmail=email;$("#resendConfirm").classList.remove("hidden");
+   note("Conta criada. Abre o email de confirmação enviado pelo Supabase e confirma o endereço antes de iniciar sessão.");
+  }else{
+   note("O Supabase não devolveu uma sessão. Verifica a configuração de email do projeto.");
+  }
+ }catch(err){note("Erro de ligação à autenticação: "+(err.message||"tenta novamente."))}
+ finally{$("#authSubmit").disabled=false}
+};
+$("#resendConfirm").onclick=async()=>{
+ if(!db||!pendingEmail)return;
+ $("#resendConfirm").disabled=true;
+ try{
+  const {error}=await db.auth.resend({type:"signup",email:pendingEmail,options:{emailRedirectTo:window.location.origin}});
+  note(error?"Não foi possível reenviar: "+error.message:"Email de confirmação reenviado.");
+ }catch(e){note("Falha ao reenviar o email: "+e.message)}
+ finally{$("#resendConfirm").disabled=false}
+};
 $("#logout").onclick=async()=>{await db.auth.signOut();location.reload()};
 $("#new").onclick=()=>{conversation=null;messages=[];$("#messages").innerHTML='<div class="msg"><h2>O que vamos criar hoje?</h2></div>';$("#heading").textContent="Nova conversa"};
 document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{mode=b.dataset.mode;document.querySelectorAll("[data-mode]").forEach(x=>x.style.borderColor=x===b?"#8b7cff":"#30394c")});
@@ -345,5 +452,16 @@ async function loadModels(){let provider=$("#providerSelect").value;let sel=$("#
 $("#providerSelect").onchange=()=>loadModels();$("#modelSearch").oninput=()=>loadModels();
 async function loadCatalog(){let {data:s}=await db.auth.getSession();let q=$("#searchApi").value;let r=await fetch("/api/catalog?q="+encodeURIComponent(q)+"&offset="+offset,{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){$("#apiList").textContent=j.detail;return}$("#catalogCount").textContent=j.total+" APIs encontradas";for(let a of j.items){let d=document.createElement("div");d.className="api";let link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent=a.name;let p=document.createElement("p");p.textContent=a.description+" · Categoria: "+a.category+" · Auth: "+a.auth;d.append(link,p);$("#apiList").append(d)}}
 $("#showCatalog").onclick=()=>{$("#catalog").classList.remove("hidden");offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#closeCatalog").onclick=()=>$("#catalog").classList.add("hidden");$("#searchApi").oninput=()=>{offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#more").onclick=()=>{offset+=50;loadCatalog()};
-(async()=>{if(!ready){note("O administrador ainda precisa configurar o Supabase.");return}let {data}=await db.auth.getSession();if(data.session)enter(data.session.user)})();
+(async()=>{
+ if(!ready||!db){note("O Supabase não está configurado ou o módulo de autenticação não carregou.");return}
+ await loadAuthConfig();
+ let {data}=await db.auth.getSession();
+ if(data.session)await enter(data.session.user);
+})();
+}).catch(err=>{
+ const note=document.getElementById("authMsg");
+ if(note)note.textContent=(err&&err.message)||"Falha ao carregar a autenticação. Atualiza a página.";
+ const toggle=document.getElementById("toggle");
+ if(toggle)toggle.onclick=()=>{const submit=document.getElementById("authSubmit");if(submit)submit.textContent="Criar conta";if(toggle)toggle.textContent="Já tenho conta";if(note)note.textContent="A autenticação não carregou; tenta atualizar a página."};
+});
 </script></body></html>"""
