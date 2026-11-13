@@ -22,9 +22,11 @@ def provider_configs():
         "openrouter":{"label":"OpenRouter · vários modelos","base":"https://openrouter.ai/api/v1","key":os.getenv("OPENROUTER_API_KEY","").strip(),"kind":"openai"},
         "mistral":{"label":"Mistral AI","base":"https://api.mistral.ai/v1","key":os.getenv("MISTRAL_API_KEY","").strip(),"kind":"openai"},
         "cloudflare":{"label":"Cloudflare Workers AI","base":f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1" if cf_account else "","key":cf_token,"kind":"cloudflare","account":cf_account},
+        "kilo":{"label":"Kilo Gateway · modelos grátis sem chave","base":"https://api.kilo.ai/api/gateway","key":"","kind":"anonymous","anonymous":True},
     }
 
 def provider_is_configured(cfg):
+    if cfg.get("anonymous"): return True
     return bool(cfg.get("key") and (cfg.get("kind")!="cloudflare" or cfg.get("account")))
 
 
@@ -63,7 +65,7 @@ async def models(provider:str=Query(min_length=1,max_length=32),q:str=Query(defa
     cache_key=provider
     cached=MODEL_CACHE.get(cache_key)
     if not cached or time.time()-cached["at"]>300:
-        headers={"Authorization":"Bearer "+cfg["key"]}
+        headers={"Authorization":"Bearer "+cfg["key"]} if cfg.get("key") else {}
         url=cfg["base"]+"/models"
         params={}
         if provider=="cloudflare":
@@ -87,10 +89,19 @@ async def models(provider:str=Query(min_length=1,max_length=32),q:str=Query(defa
                 if provider=="openrouter" and "text" not in item.get("architecture",{}).get("output_modalities",["text"]): continue
                 if provider=="groq" and any(x in model_id.lower() for x in ("whisper","tts","guard","embed")): continue
                 pricing=item.get("pricing") or {}
-                free=(str(pricing.get("prompt","")) in ("0","0.0","0.000000") and str(pricing.get("completion","")) in ("0","0.0","0.000000")) if pricing else model_id.endswith(":free")
+                try:
+                    free=(float(pricing.get("prompt",1))==0 and float(pricing.get("completion",1))==0)
+                except (TypeError,ValueError):
+                    free=False
+                free=free or model_id.endswith(":free")
+                if provider=="kilo" and not free and model_id not in ("openrouter/free","kilo-auto/free"): continue
                 items.append({"id":model_id,"name":item.get("name") or item.get("display_name") or model_id,"free":free})
             if provider=="openrouter":
                 items.insert(0,{"id":"openrouter/free","name":"Automático · apenas modelos gratuitos","free":True})
+            if provider=="kilo":
+                items.insert(0,{"id":"kilo-auto/free","name":"Kilo Auto Free · escolhe automaticamente","free":True})
+                if not any(x["id"]=="openrouter/free" for x in items):
+                    items.insert(1,{"id":"openrouter/free","name":"OpenRouter Free · encaminhamento automático","free":True})
             items.sort(key=lambda x:(not x["free"],x["name"].casefold()))
             MODEL_CACHE[cache_key]={"at":time.time(),"items":items[:500]}
         except HTTPException:
@@ -118,8 +129,14 @@ async def chat(body:Chat,authorization:str|None=Header(default=None)):
             "code":"És a Nova AI, especialista em programação. Produz código seguro e funcional.",
             "writing":"És a Nova AI, especialista em escrita e documentos."}[body.mode]
     msgs=[{"role":"system","content":system}]+body.messages
+    if body.provider=="kilo":
+        if not (body.model.endswith(":free") or body.model in ("kilo-auto/free","openrouter/free")):
+            raise HTTPException(400,"O Kilo sem chave só permite modelos gratuitos.")
+        headers={"Content-Type":"application/json"}
+    else:
+        headers={"Authorization":"Bearer "+cfg["key"],"Content-Type":"application/json"}
     async with httpx.AsyncClient(timeout=90) as c:
-        r=await c.post(cfg["base"]+"/chat/completions",headers={"Authorization":"Bearer "+cfg["key"],"Content-Type":"application/json"},json={"model":body.model,"messages":msgs})
+        r=await c.post(cfg["base"]+"/chat/completions",headers=headers,json={"model":body.model,"messages":msgs})
     if r.status_code>=400: raise HTTPException(502,"O fornecedor recusou o pedido. Confirma se o modelo está disponível e se a chave tem acesso.")
     data=r.json()
     try: reply=data["choices"][0]["message"]["content"]
@@ -180,7 +197,7 @@ async function save(role,content){let {data:session}=await db.auth.getSession();
 async function send(){let text=$("#prompt").value.trim();if(!text)return;$("#prompt").value="";add("user",text);messages.push({role:"user",content:text});$("#send").disabled=true;try{await save("user",text);let {data:s}=await db.auth.getSession();let r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+s.session.access_token},body:JSON.stringify({messages,mode,provider:$("#providerSelect").value,model:$("#modelSelect").value})});let j=await r.json();if(!r.ok)throw Error(j.detail||"Erro na IA");add("assistant",j.reply);messages.push({role:"assistant",content:j.reply});await save("assistant",j.reply)}catch(e){add("assistant","Erro: "+e.message)}finally{$("#send").disabled=false}}
 $("#send").onclick=send;$("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};
 async function loadProviders(){let {data:s}=await db.auth.getSession();let r=await fetch("/api/providers",{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();let sel=$("#providerSelect");sel.replaceChildren();for(let p of (j.providers||[])){let o=document.createElement("option");o.value=p.id;o.textContent=p.label+(p.configured?"":" · por configurar");sel.append(o)}let preferred=(j.providers||[]).find(p=>p.configured);if(preferred)sel.value=preferred.id;await loadModels()}
-async function loadModels(){let provider=$("#providerSelect").value;let sel=$("#modelSelect");sel.replaceChildren();$("#status").textContent="A obter modelos...";let {data:s}=await db.auth.getSession();let q=$("#modelSearch").value.trim();let r=await fetch("/api/models?provider="+encodeURIComponent(provider)+"&q="+encodeURIComponent(q),{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){let o=document.createElement("option");o.textContent=j.detail||"Fornecedor por configurar";sel.append(o);$("#status").textContent="Chave necessária";return}modelList=j.items||[];for(let m of modelList){let o=document.createElement("option");o.value=m.id;o.textContent=m.name+(m.free?" · grátis":"");sel.append(o)}$("#status").textContent=modelList.length+" modelos";if(!modelList.length){let o=document.createElement("option");o.textContent="Nenhum modelo encontrado";sel.append(o)}}
+async function loadModels(){let provider=$("#providerSelect").value;let sel=$("#modelSelect");sel.replaceChildren();$("#status").textContent="A obter modelos...";let {data:s}=await db.auth.getSession();let q=$("#modelSearch").value.trim();let r=await fetch("/api/models?provider="+encodeURIComponent(provider)+"&q="+encodeURIComponent(q),{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){let o=document.createElement("option");o.textContent=j.detail||"Fornecedor por configurar";sel.append(o);$("#status").textContent="Chave necessária";return}modelList=j.items||[];for(let m of modelList){let o=document.createElement("option");o.value=m.id;o.textContent=m.name+(m.free?" · grátis":"");sel.append(o)}$("#status").textContent=modelList.length+" modelos"+(provider==="kilo"?" · grátis; não envies dados privados":"");if(!modelList.length){let o=document.createElement("option");o.textContent="Nenhum modelo encontrado";sel.append(o)}}
 $("#providerSelect").onchange=()=>loadModels();$("#modelSearch").oninput=()=>loadModels();
 async function loadCatalog(){let {data:s}=await db.auth.getSession();let q=$("#searchApi").value;let r=await fetch("/api/catalog?q="+encodeURIComponent(q)+"&offset="+offset,{headers:{Authorization:"Bearer "+s.session.access_token}});let j=await r.json();if(!r.ok){$("#apiList").textContent=j.detail;return}$("#catalogCount").textContent=j.total+" APIs encontradas";for(let a of j.items){let d=document.createElement("div");d.className="api";let link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent=a.name;let p=document.createElement("p");p.textContent=a.description+" · Categoria: "+a.category+" · Auth: "+a.auth;d.append(link,p);$("#apiList").append(d)}}
 $("#showCatalog").onclick=()=>{$("#catalog").classList.remove("hidden");offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#closeCatalog").onclick=()=>$("#catalog").classList.add("hidden");$("#searchApi").oninput=()=>{offset=0;$("#apiList").replaceChildren();loadCatalog()};$("#more").onclick=()=>{offset+=50;loadCatalog()};
