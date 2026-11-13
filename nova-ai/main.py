@@ -37,7 +37,7 @@ async def freellmapi_api_key():
         if cached["key"] and now-cached["at"]<600:
             return cached["key"]
         try:
-            async with httpx.AsyncClient(timeout=20) as c:
+            async with httpx.AsyncClient(timeout=120) as c:
                 login=await c.post(FREELLMAPI_URL+"/api/auth/login",json={
                     "email":FREELLMAPI_ADMIN_EMAIL,
                     "password":FREELLMAPI_ADMIN_PASSWORD
@@ -86,9 +86,14 @@ async def freellmapi_models():
         return FREELLMAPI_MODELS_CACHE["items"]
     api_key=await freellmapi_api_key()
     try:
-        async with httpx.AsyncClient(timeout=25) as c:
+        async with httpx.AsyncClient(timeout=60) as c:
             r=await c.get(FREELLMAPI_URL+"/v1/models",params={"available":"true"},
                 headers={"Authorization":"Bearer "+api_key})
+            if r.status_code in (401,403):
+                FREELLMAPI_KEY_CACHE.update({"key":"","at":0})
+                api_key=await freellmapi_api_key()
+                r=await c.get(FREELLMAPI_URL+"/v1/models",params={"available":"true"},
+                    headers={"Authorization":"Bearer "+api_key})
         if r.status_code>=400:
             raise HTTPException(502,"O catálogo de modelos gratuitos está temporariamente indisponível.")
         data=r.json()
@@ -235,10 +240,16 @@ async def chat(body:Chat,authorization:str|None=Header(default=None)):
                 "writing":"És a Nova AI, especialista em escrita e documentos."}[body.mode]
         msgs=[{"role":"system","content":system}]+body.messages
         try:
-            async with httpx.AsyncClient(timeout=150) as c:
+            async with httpx.AsyncClient(timeout=180) as c:
                 r=await c.post(FREELLMAPI_URL+"/v1/chat/completions",
                     headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json"},
                     json={"model":body.model or "auto","messages":msgs})
+                if r.status_code in (401,403):
+                    FREELLMAPI_KEY_CACHE.update({"key":"","at":0})
+                    api_key=await freellmapi_api_key()
+                    r=await c.post(FREELLMAPI_URL+"/v1/chat/completions",
+                        headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json"},
+                        json={"model":body.model or "auto","messages":msgs})
         except Exception:
             raise HTTPException(502,"O router gratuito não respondeu a tempo.")
         if r.status_code==429:
